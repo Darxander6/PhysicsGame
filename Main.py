@@ -13,16 +13,43 @@ Gravity = 0.5
 Bounce = 0.7
 balls = []
 Gui = True
+slider=False
 spawn_buttons=False
 font = pygame.font.SysFont(None, 36)
 gui_text = font.render("start game", True, (255, 255, 255))
 ball_button_text = font.render("spawn balls", True, (255, 255, 255))    
-value_text= font.render(f"Gravity: {Gravity:.2f} Bounce: {Bounce:.2f}", True, 'black')
 pygame.display.set_caption("Ball Simulation")
 clear_balls_button = pygame.Rect(0,100, 150, 100)
 ball_button = pygame.Rect(0, 0, 150, 100)
 GuiButton = pygame.Rect(270, 200, 250, 150)
-
+class Slider:
+    def __init__(self, x, y, width, min_val, max_val, start_val, label):
+        self.rect = pygame.Rect(x, y, width, 20)
+        self.min_val = min_val
+        self.max_val = max_val
+        self.value = start_val
+        self.label = label
+        self.dragging = False
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.rect.collidepoint(event.pos):
+                self.dragging = True
+        elif event.type == pygame.MOUSEBUTTONUP:
+            self.dragging = False
+        elif event.type == pygame.MOUSEMOTION and self.dragging:
+            mouse_x = event.pos[0]
+            percent = (mouse_x - self.rect.x) / self.rect.width
+            percent = max(0, min(1, percent))
+            self.value=self.min_val + (self.max_val - self.min_val) * percent
+    def draw(self, screen, font):
+        pygame.draw.rect(screen, (200, 200, 200), self.rect)
+        percent=(self.value - self.min_val) / (self.max_val - self.min_val)
+        knob_x=self.rect.x + percent * self.rect.width
+        pygame.draw.circle(screen,(255,100,100),(int(knob_x), self.rect.centery), 10)
+        label_text=font.render(f"{self.label}: {self.value:.2f}", True, (0, 0, 0))
+        screen.blit(label_text, (self.rect.x, self.rect.y - 25))
+gravity_slider=Slider(350, 200, 200, 0, 2, 0.5, "Gravity")
+bounce_slider=Slider(350, 300, 200, 0, 1, 0.7, "Bounce")    
 class Ball:
     def __init__(self, x, y, radius,color):
         self.x = x
@@ -88,13 +115,16 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-
+        gravity_slider.handle_event(event)
+        bounce_slider.handle_event(event)
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1 :
                 if Gui:
                     if GuiButton.collidepoint(event.pos):
                         Gui = not Gui
                 else:
+
+
                     if ball_button.collidepoint(event.pos):
                         
                         spawn_buttons=not spawn_buttons
@@ -150,6 +180,11 @@ while running:
         ball.draw(screen)
     
     
+    if Gui==False:
+        Bounce=bounce_slider.value
+        Gravity=gravity_slider.value        
+        gravity_slider.draw(screen,font)
+        bounce_slider.draw(screen,font)
         
     if Gui:
         pygame.draw.rect(screen, (0, 255, 0), GuiButton)
@@ -165,6 +200,8 @@ while running:
         screen.blit(font.render("clear balls", True, (255, 255, 255)), (clear_balls_button.x + 20, clear_balls_button.y + 50))
         pygame.draw.rect(screen, 'red', ball_button)
         screen.blit(ball_button_text, (ball_button.x + 20, ball_button.y + 50))
+    value_text= font.render(f"Gravity: {Gravity:.2f} Bounce: {Bounce:.2f}", True, 'black')
+
     screen.blit(value_text, (WIDTH - value_text.get_width() - 10, 10))
 
     pygame.display.flip()
