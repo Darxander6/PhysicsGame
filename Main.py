@@ -1,4 +1,6 @@
+import random
 import pygame
+import math
 pygame.init()
 WIDTH, HEIGHT = 800, 600
 running = True
@@ -8,10 +10,16 @@ Gravity = 0.5
 Bounce = 0.7
 balls = []
 Gui = True
+spawn_buttons=False
 font = pygame.font.SysFont(None, 36)
 gui_text = font.render("start game", True, (255, 255, 255))
+ball_button_text = font.render("spawn balls", True, (255, 255, 255))    
+
 pygame.display.set_caption("Ball Simulation")
+clear_balls_button = pygame.Rect(0,100, 150, 100)
+ball_button = pygame.Rect(0, 0, 150, 100)
 GuiButton = pygame.Rect(270, 200, 250, 150)
+
 class Ball:
     def __init__(self, x, y, radius,color):
         self.x = x
@@ -19,35 +27,107 @@ class Ball:
         self.radius = radius
         self.color = color
         self.vel_y=0
+        self.vel_x=0
+        self.mass=self.radius
     def update(self):
         self.vel_y += Gravity
         self.y += self.vel_y
+        self.x += self.vel_x
         if self.y + self.radius > HEIGHT:
             self.y = HEIGHT - self.radius
             self.vel_y *= -Bounce
+        if self.x - self.radius < 0:
+            self.x = self.radius
+            self.vel_x *= -Bounce
+        if self.x + self.radius > WIDTH:
+            self.x = WIDTH - self.radius
+            self.vel_x *= -Bounce
+        self.vel_x *= 0.999
+        self.vel_y *= 0.999
+
     def draw(self, screen):
         pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
+def clear_balls():
+    balls.clear()
+def check_collisions(balls):
+    for i in range (len(balls)):
+        for j in range(i + 1, len(balls)):
+            b1=balls[i]
+            b2=balls[j]
+            dx=b2.x - b1.x
+            dy=b2.y - b1.y
+            distance=math.hypot(dx, dy)
+            if distance == 0:
+                continue
+            if distance <b1.radius +b2.radius:
+                overlap=(b1.radius + b2.radius) - distance
+                nx = dx / distance
+                ny = dy / distance
+                b1.x -= nx * overlap / 2
+                b1.y -= ny * overlap / 2
+                b2.x += nx * overlap / 2
+                b2.y += ny * overlap / 2
+                rvx = b2.vel_x - b1.vel_x
+                rvy = b2.vel_y - b1.vel_y
+                vel_along_normal = rvx * nx + rvy * ny
+                if vel_along_normal > 0:
+                    continue   
+                restitution = 0.8
+                impulse = -(1 + restitution) * vel_along_normal
+                impulse /= (1 / b1.mass) + (1 / b2.mass)
+                impulse_x = impulse * nx
+                impulse_y = impulse * ny
+                b1.vel_x -= impulse_x / b1.mass
+                b1.vel_y -= impulse_y / b1.mass
+                b2.vel_x += impulse_x / b2.mass
+                b2.vel_y += impulse_y / b2.mass
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1 and Gui:
-                if GuiButton.collidepoint(event.pos):
-                    Gui = not Gui
-            else:
-                x, y = pygame.mouse.get_pos()
-                balls.append(Ball(x, y, 20, (255, 0, 0)))
+            if event.button == 1 :
+                if Gui:
+                    if GuiButton.collidepoint(event.pos):
+                        Gui = not Gui
+                else:
+                    if ball_button.collidepoint(event.pos):
+                        
+                        spawn_buttons=not spawn_buttons
+                if clear_balls_button.collidepoint(event.pos):
+                    clear_balls()
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and spawn_buttons:
+            
+            x, y = pygame.mouse.get_pos()
+            balls.append(Ball(x, y, 20, (255, 0, 0)))
+            
+        
+
+                        
     screen.fill((255, 255, 255))
     for ball in balls:
         ball.update()
+    check_collisions(balls)
+    for ball in balls:
         ball.draw(screen)
+    
+    
+        
     if Gui:
         pygame.draw.rect(screen, (0, 255, 0), GuiButton)
     
         screen.blit(gui_text, (GuiButton.x + 20, GuiButton.y + 50))
-    
+    if spawn_buttons and not Gui:
+        pygame.draw.rect(screen, 'green', clear_balls_button)
+        screen.blit(font.render("clear balls", True, (255, 255, 255)), (clear_balls_button.x + 20, clear_balls_button.y + 50))
+        pygame.draw.rect(screen, 'green', ball_button)
+        screen.blit(ball_button_text, (ball_button.x + 20, ball_button.y + 50))
+    elif not spawn_buttons and not Gui:
+        pygame.draw.rect(screen, 'green', clear_balls_button)
+        screen.blit(font.render("clear balls", True, (255, 255, 255)), (clear_balls_button.x + 20, clear_balls_button.y + 50))
+        pygame.draw.rect(screen, 'red', ball_button)
+        screen.blit(ball_button_text, (ball_button.x + 20, ball_button.y + 50))
     pygame.display.flip()
     clock.tick(60)
 pygame.quit()
