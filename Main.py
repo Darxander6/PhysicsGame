@@ -2,8 +2,11 @@ import random
 import pygame
 import math
 pygame.init()
+time_scale = 1
 WIDTH, HEIGHT = 800, 600
 running = True
+dragging_ball=None
+prev_mouse_pos=(0,0)
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
 Gravity = 0.5
@@ -14,7 +17,7 @@ spawn_buttons=False
 font = pygame.font.SysFont(None, 36)
 gui_text = font.render("start game", True, (255, 255, 255))
 ball_button_text = font.render("spawn balls", True, (255, 255, 255))    
-
+value_text= font.render(f"Gravity: {Gravity:.2f} Bounce: {Bounce:.2f}", True, 'black')
 pygame.display.set_caption("Ball Simulation")
 clear_balls_button = pygame.Rect(0,100, 150, 100)
 ball_button = pygame.Rect(0, 0, 150, 100)
@@ -30,9 +33,9 @@ class Ball:
         self.vel_x=0
         self.mass=self.radius
     def update(self):
-        self.vel_y += Gravity
-        self.y += self.vel_y
-        self.x += self.vel_x
+        self.vel_y += Gravity *time_scale
+        self.y += self.vel_y*time_scale
+        self.x += self.vel_x*time_scale
         if self.y + self.radius > HEIGHT:
             self.y = HEIGHT - self.radius
             self.vel_y *= -Bounce
@@ -97,17 +100,51 @@ while running:
                         spawn_buttons=not spawn_buttons
                 if clear_balls_button.collidepoint(event.pos):
                     clear_balls()
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            mx,my=pygame.mouse.get_pos()
+            for ball in balls:
+                dx=ball.x - mx
+                dy=ball.y - my
+                if math.hypot(dx, dy) < ball.radius:
+                    dragging_ball=ball
+                    break
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if dragging_ball:
+                mx,my=pygame.mouse.get_pos()
+                vx=mx - prev_mouse_pos[0]
+                vy=my - prev_mouse_pos[1]
+                dragging_ball.vel_x=vx*0.5
+                dragging_ball.vel_y=vy*0.5
+                dragging_ball=None
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            mx,my=pygame.mouse.get_pos()
+            for ball in balls:
+                dx=ball.x - mx
+                dy=ball.y - my
+                if math.hypot(dx, dy) < ball.radius:
+                    balls.remove(ball)
+                    break  
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and spawn_buttons:
             
             x, y = pygame.mouse.get_pos()
             balls.append(Ball(x, y, 20, (255, 0, 0)))
-            
-        
-
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
+                time_scale = .3
+        if event.type == pygame.KEYUP:
+            if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
+                time_scale = 1
+    mx,my=pygame.mouse.get_pos()
+    if dragging_ball:
+        dragging_ball.x, dragging_ball.y = mx,my
+        prev_mouse_pos=(mx,my)    
+    
                         
     screen.fill((255, 255, 255))
     for ball in balls:
-        ball.update()
+        if ball!=dragging_ball:
+            ball.update()
+
     check_collisions(balls)
     for ball in balls:
         ball.draw(screen)
@@ -128,6 +165,8 @@ while running:
         screen.blit(font.render("clear balls", True, (255, 255, 255)), (clear_balls_button.x + 20, clear_balls_button.y + 50))
         pygame.draw.rect(screen, 'red', ball_button)
         screen.blit(ball_button_text, (ball_button.x + 20, ball_button.y + 50))
+    screen.blit(value_text, (WIDTH - value_text.get_width() - 10, 10))
+
     pygame.display.flip()
     clock.tick(60)
 pygame.quit()
