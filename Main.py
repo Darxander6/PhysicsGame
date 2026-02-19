@@ -1,4 +1,5 @@
 import random
+from turtle import color
 import pygame
 import math
 pygame.init()
@@ -18,6 +19,7 @@ ramp_angle=0
 balls = []
 walls = []
 ramps = []
+ball_spawners=[]
 Gui = True
 slider=False
 spawn_buttons=False
@@ -198,6 +200,21 @@ class Ball:
                     self.vel_y *= 0.99
     def draw(self, screen):
         pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
+class BallSpawner:
+    def __init__(self, x, y, rate=1):
+        self.x = x
+        self.y = y
+
+        self.rate = rate
+        self.timer=0
+    def update(self,dt):
+        self.timer += dt
+        if self.timer >= 1/self.rate:
+            balls.append(Ball(self.x, self.y, 20, (random.randint(0,255), random.randint(0,255), random.randint(0,255))))
+
+            self.timer=0
+    def draw(self, screen):
+        pygame.draw.circle(screen, (0, 255, 0), (int(self.x), int(self.y)), 15)
 def clear_balls():
     balls.clear()
 def check_collisions(balls):
@@ -262,6 +279,8 @@ while running:
                 walls.append(Wall(x,y,20,120,wall_angle))
             elif build_type=="ramp":
                 ramps.append(Ramp(x,y,ramp_angle))
+            elif build_type=="ball_spawner":
+                ball_spawners.append(BallSpawner(x,y,rate=1))
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             mx,my=pygame.mouse.get_pos()
@@ -287,6 +306,20 @@ while running:
                 if math.hypot(dx, dy) < ball.radius:
                     balls.remove(ball)
                     break  
+            for wall in walls:
+                pts = wall.points()
+                if pygame.draw.polygon(screen, (0, 0, 0), pts).collidepoint(mx, my):
+                    walls.remove(wall)
+                    break
+            for ramp in ramps:
+                pts = ramp.points()
+                if pygame.draw.polygon(screen, (0, 0, 0), pts).collidepoint(mx, my):
+                    ramps.remove(ramp)
+                    break
+            for spawner in ball_spawners:
+                if math.hypot(spawner.x - mx, spawner.y - my) < 15:
+                    ball_spawners.remove(spawner)
+                    break
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and spawn_buttons:
             
             x, y = pygame.mouse.get_pos()
@@ -302,25 +335,15 @@ while running:
                 build_type = "wall"
             if event.key == pygame.K_2:
                 build_type = "ramp"
+            if event.key == pygame.K_3:
+                build_type = "ball_spawner"
 
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
                 time_scale = 1
             if event.key == pygame.K_p:
                 time_scale = 1
-    mx,my=pygame.mouse.get_pos()
-    if build_mode:
-        if build_type=="wall":
-            base = [(0, 0), (20, 0), (20, 120), (0, 120)]
-            preview=[]
-            for px,py in base:
-                rotated_x=px*math.cos(math.radians(wall_angle))-py*math.sin(math.radians(wall_angle))
-                rotated_y=px*math.sin(math.radians(wall_angle))+py*math.cos(math.radians(wall_angle))
-                preview.append((mx + rotated_x, my + rotated_y))
-            pygame.draw.polygon(screen, (150,150, 150, 100), preview,2)
-        elif build_type=="ramp":
-            preview=[(mx, my), (mx + 120, my), (mx + 120, my - 60)]
-            pygame.draw.polygon(screen, (150,150, 150), preview,2)
+   
 
     
     if dragging_ball:
@@ -343,7 +366,10 @@ while running:
     for ramp in ramps:
         ramp.draw(screen)
 
-
+    dt=clock.get_time()/1000
+    for spawner in ball_spawners:
+        spawner.update(dt)
+        spawner.draw(screen)
 
     if Gui==False:
         Bounce=bounce_slider.value
@@ -388,6 +414,9 @@ while running:
                 rotated_y=px*math.sin(math.radians(ramp_angle))+py*math.cos(math.radians(ramp_angle))
                 preview.append((mx + rotated_x, my + rotated_y))
             pygame.draw.polygon(screen, (150, 150, 100), preview,2)
+        elif build_type=="ball_spawner":
+            mx,my=pygame.mouse.get_pos()
+            pygame.draw.circle(screen, (0, 255, 0), (int(mx), int(my)), 15)
 
     pygame.display.flip()
     clock.tick(60)
