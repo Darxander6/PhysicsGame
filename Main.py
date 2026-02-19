@@ -5,13 +5,19 @@ pygame.init()
 time_scale = 1
 WIDTH, HEIGHT = 800, 600
 running = True
+wall_angle=0
+build_mode = False
+build_type="wall"
 dragging_ball=None
 prev_mouse_pos=(0,0)
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
 Gravity = 0.5
 Bounce = 0.7
+ramp_angle=0
 balls = []
+walls = []
+ramps = []
 Gui = True
 slider=False
 spawn_buttons=False
@@ -48,8 +54,41 @@ class Slider:
         pygame.draw.circle(screen,(255,100,100),(int(knob_x), self.rect.centery), 10)
         label_text=font.render(f"{self.label}: {self.value:.2f}", True, (0, 0, 0))
         screen.blit(label_text, (self.rect.x, self.rect.y - 25))
-gravity_slider=Slider(350, 200, 200, 0, 2, 0.5, "Gravity")
-bounce_slider=Slider(350, 300, 200, 0, 1, 0.7, "Bounce")    
+gravity_slider=Slider(590, 200, 200, 0, 2, 0.5, "Gravity")
+bounce_slider=Slider(590, 300, 200, 0, 1, 0.7, "Bounce")   
+class Wall:
+    def __init__(self, x, y,width=20,height=120,angle=0):
+        self.x = x
+        self.y = y
+        self.width=width
+        self.height=height
+        self.angle = angle
+    def points(self):
+        base=[(0,0),(self.width,0),(self.width,self.height),(0,self.height)]
+        points=[]
+        for px,py in base:
+            rotated_x=px*math.cos(math.radians(self.angle))-py*math.sin(math.radians(self.angle))
+            rotated_y=px*math.sin(math.radians(self.angle))+py*math.cos(math.radians(self.angle))
+            points.append((self.x + rotated_x, self.y + rotated_y))
+        return points
+    def draw(self, screen):
+        pygame.draw.polygon(screen, (100, 100, 100), self.points())
+class Ramp:
+    def __init__(self, x, y,angle=0):
+        self.x=x
+        self.y=y
+        self.angle=angle
+    def points(self):
+        base=[(0,0),(120,0),(120,-60)]
+        points=[]
+        for px,py in base:
+            rotated_x=px*math.cos(math.radians(self.angle))-py*math.sin(math.radians(self.angle))
+            rotated_y=px*math.sin(math.radians(self.angle))+py*math.cos(math.radians(self.angle))
+            points.append((self.x + rotated_x, self.y + rotated_y))
+        return points
+    def draw(self, screen):
+        pygame.draw.polygon(screen, (120, 80, 50), self.points())
+
 class Ball:
     def __init__(self, x, y, radius,color):
         self.x = x
@@ -74,7 +113,89 @@ class Ball:
             self.vel_x *= -Bounce
         self.vel_x *= 0.999
         self.vel_y *= 0.999
+        for wall in walls:
+            pts = wall.points()
+            edges = [
+                (pts[0], pts[1]),
+                (pts[1], pts[2]),
+                (pts[2], pts[3]),
+                (pts[3], pts[0])
+            ]
+            
+            collided = False
+            for (x1,y1),(x2,y2) in edges:
+                ex = x2 - x1
+                ey = y2 - y1
+                length = math.hypot(ex,ey)
+                if length == 0: 
+                    continue
+                tx = ex/length
+                ty = ey/length
+                nx = -ty
+                ny = tx
+                bx = self.x - x1
+                by = self.y - y1
+                proj = bx*tx + by*ty
+                proj = max(0, min(length, proj))
+                closest_x = x1 + tx*proj
+                closest_y = y1 + ty*proj
+                dx = self.x - closest_x
+                dy = self.y - closest_y
+                dist = math.hypot(dx, dy)
+                if dist < self.radius:
+                    collided = True
+                    if dist == 0: 
+                        continue
+                    nx = dx / dist
+                    ny = dy / dist
+                    overlap = self.radius - dist
+                    self.x += nx*overlap
+                    self.y += ny*overlap
+                    vn = self.vel_x*nx + self.vel_y*ny
+                    if vn < 0:
+                        self.vel_x -= 2*vn*nx
+                        self.vel_y -= 2*vn*ny
+                    self.vel_x *= 0.9
+                    self.vel_y *= Bounce
 
+            
+        for ramp in ramps:
+            points = ramp.points()
+            for i in range(len(points)):
+                x1, y1 = points[i]
+                x2, y2 = points[(i + 1) % len(points)]
+                ex = x2 - x1
+                ey = y2 - y1
+                length=math.hypot(ex, ey)
+                if length == 0:
+                    continue
+                tx=ex / length
+                ty=ey / length
+                nx=-ty
+                ny=tx
+                bx=self.x - x1
+                by=self.y - y1
+                proj=bx * tx + by * ty
+                proj= max(0, min(length, proj))
+                closest_x = x1 + proj * tx
+                closest_y = y1 + proj * ty
+                
+                dx=self.x - closest_x
+                dy=self.y - closest_y
+                dist=math.hypot(dx, dy)
+                if dist < self.radius:
+                    overlap=self.radius - dist
+                    self.x+= nx*overlap
+                    self.y+= ny*overlap
+                    vn = self.vel_x * nx + self.vel_y * ny
+                    if vn < 0:
+                        self.vel_x -= vn * nx 
+                        self.vel_y -= vn * ny 
+                    gravity_along=Gravity*ty
+                    self.vel_x += gravity_along*tx*time_scale
+                    self.vel_y += gravity_along*ty*time_scale
+                    self.vel_x *= 0.99
+                    self.vel_y *= 0.99
     def draw(self, screen):
         pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
 def clear_balls():
@@ -130,6 +251,18 @@ while running:
                         spawn_buttons=not spawn_buttons
                 if clear_balls_button.collidepoint(event.pos):
                     clear_balls()
+        if event.type == pygame.MOUSEWHEEL and build_mode and build_type=="ramp":
+            ramp_angle += event.y * 10
+        elif event.type == pygame.MOUSEWHEEL and build_mode and build_type=="wall":
+            wall_angle += event.y * 10
+            
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button ==1 and build_mode:
+            x,y=event.pos
+            if build_type=="wall":
+                walls.append(Wall(x,y,20,120,wall_angle))
+            elif build_type=="ramp":
+                ramps.append(Ramp(x,y,ramp_angle))
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             mx,my=pygame.mouse.get_pos()
             for ball in balls:
@@ -157,14 +290,39 @@ while running:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and spawn_buttons:
             
             x, y = pygame.mouse.get_pos()
-            balls.append(Ball(x, y, 20, (255, 0, 0)))
+            balls.append(Ball(x, y, 20, (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))))
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
                 time_scale = .3
+            if event.key == pygame.K_p:
+                time_scale = 0
+            if event.key == pygame.K_b:
+                build_mode = not build_mode
+            if event.key == pygame.K_1:
+                build_type = "wall"
+            if event.key == pygame.K_2:
+                build_type = "ramp"
+
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
                 time_scale = 1
+            if event.key == pygame.K_p:
+                time_scale = 1
     mx,my=pygame.mouse.get_pos()
+    if build_mode:
+        if build_type=="wall":
+            base = [(0, 0), (20, 0), (20, 120), (0, 120)]
+            preview=[]
+            for px,py in base:
+                rotated_x=px*math.cos(math.radians(wall_angle))-py*math.sin(math.radians(wall_angle))
+                rotated_y=px*math.sin(math.radians(wall_angle))+py*math.cos(math.radians(wall_angle))
+                preview.append((mx + rotated_x, my + rotated_y))
+            pygame.draw.polygon(screen, (150,150, 150, 100), preview,2)
+        elif build_type=="ramp":
+            preview=[(mx, my), (mx + 120, my), (mx + 120, my - 60)]
+            pygame.draw.polygon(screen, (150,150, 150), preview,2)
+
+    
     if dragging_ball:
         dragging_ball.x, dragging_ball.y = mx,my
         prev_mouse_pos=(mx,my)    
@@ -178,8 +336,15 @@ while running:
     check_collisions(balls)
     for ball in balls:
         ball.draw(screen)
+
+    for wall in walls:
+        wall.draw(screen)
     
-    
+    for ramp in ramps:
+        ramp.draw(screen)
+
+
+
     if Gui==False:
         Bounce=bounce_slider.value
         Gravity=gravity_slider.value        
@@ -203,6 +368,26 @@ while running:
     value_text= font.render(f"Gravity: {Gravity:.2f} Bounce: {Bounce:.2f}", True, 'black')
 
     screen.blit(value_text, (WIDTH - value_text.get_width() - 10, 10))
+    mx,my=pygame.mouse.get_pos()
+    if build_mode:
+        screen.blit(font.render(f"Building: {build_type}", True, 'black'), (500, 500))
+
+        if build_type=="wall":
+            base = [(0, 0), (20, 0), (20, 120), (0, 120)]
+            preview=[]
+            for px,py in base:
+                rotated_x=px*math.cos(math.radians(wall_angle))-py*math.sin(math.radians(wall_angle))
+                rotated_y=px*math.sin(math.radians(wall_angle))+py*math.cos(math.radians(wall_angle))
+                preview.append((mx + rotated_x, my + rotated_y))
+            pygame.draw.polygon(screen, (150,150, 150, 100), preview,2)        
+        elif build_type=="ramp":
+            base = [(0, 0), (120, 0), (120, -60)]
+            preview=[]
+            for px,py in base:
+                rotated_x=px*math.cos(math.radians(ramp_angle))-py*math.sin(math.radians(ramp_angle))
+                rotated_y=px*math.sin(math.radians(ramp_angle))+py*math.cos(math.radians(ramp_angle))
+                preview.append((mx + rotated_x, my + rotated_y))
+            pygame.draw.polygon(screen, (150, 150, 100), preview,2)
 
     pygame.display.flip()
     clock.tick(60)
