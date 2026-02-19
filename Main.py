@@ -2,6 +2,7 @@ import random
 from turtle import color
 import pygame
 import math
+
 pygame.init()
 time_scale = 1
 WIDTH, HEIGHT = 800, 600
@@ -20,6 +21,7 @@ balls = []
 walls = []
 ramps = []
 ball_spawners=[]
+portals=[]
 Gui = True
 slider=False
 spawn_buttons=False
@@ -101,6 +103,9 @@ class Ball:
         self.vel_x=0
         self.mass=self.radius
     def update(self):
+        if hasattr(self, 'portal_cooldown'):
+            if self.portal_cooldown > 0:
+                self.portal_cooldown -= 1
         self.vel_y += Gravity *time_scale
         self.y += self.vel_y*time_scale
         self.x += self.vel_x*time_scale
@@ -198,6 +203,8 @@ class Ball:
                     self.vel_y += gravity_along*ty*time_scale
                     self.vel_x *= 0.99
                     self.vel_y *= 0.99
+        for p in portals:
+            p.check_portal(self)
     def draw(self, screen):
         pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
 class BallSpawner:
@@ -215,6 +222,34 @@ class BallSpawner:
             self.timer=0
     def draw(self, screen):
         pygame.draw.circle(screen, (0, 255, 0), (int(self.x), int(self.y)), 15)
+class Portal:
+    def  __init__(self,x,y,raduis=18,color=(100,0,200)):
+        self.x=x
+        self.y=y
+        self.radius=raduis
+        self.color=color
+        self.link=None
+    def draw(self,screen):
+        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
+    def check_portal(self,ball):
+        dx=ball.x - self.x
+        dy=ball.y - self.y
+        dist_squared=dx*dx + dy*dy
+        if dist_squared < (self.radius * self.radius) :
+            if hasattr(ball, 'portal_cooldown') and ball.portal_cooldown > 0:
+                return
+            if self.link:
+                mag=math.hypot(ball.vel_x, ball.vel_y)
+                if mag == 0:
+                    nx,ny=0,-1
+                else:
+                    nx=ball.vel_x / mag
+                    ny=ball.vel_y / mag
+                ball.x = self.link.x + nx * (self.link.radius + ball.radius + 2)
+                ball.y = self.link.y + ny * (self.link.radius + ball.radius + 2)
+                ball.vel_x = nx * mag
+                ball.vel_y = ny * mag
+                ball.portal_cooldown = 1
 def clear_balls():
     balls.clear()
 def check_collisions(balls):
@@ -281,6 +316,11 @@ while running:
                 ramps.append(Ramp(x,y,ramp_angle))
             elif build_type=="ball_spawner":
                 ball_spawners.append(BallSpawner(x,y,rate=1))
+            elif build_type=="portal":
+                portals.append(Portal(x,y))
+                if len(portals) % 2 == 0:
+                    portals[-1].link = portals[-2]
+                    portals[-2].link = portals[-1]
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             mx,my=pygame.mouse.get_pos()
@@ -337,6 +377,8 @@ while running:
                 build_type = "ramp"
             if event.key == pygame.K_3:
                 build_type = "ball_spawner"
+            if event.key == pygame.K_4:
+                build_type = "portal"
 
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
@@ -370,6 +412,8 @@ while running:
     for spawner in ball_spawners:
         spawner.update(dt)
         spawner.draw(screen)
+    for portal in portals:
+        portal.draw(screen)
 
     if Gui==False:
         Bounce=bounce_slider.value
@@ -417,6 +461,9 @@ while running:
         elif build_type=="ball_spawner":
             mx,my=pygame.mouse.get_pos()
             pygame.draw.circle(screen, (0, 255, 0), (int(mx), int(my)), 15)
+        elif build_type=="portal":
+            mx,my=pygame.mouse.get_pos()
+            pygame.draw.circle(screen, (100, 0, 200), (int(mx), int(my)), 18,2)
 
     pygame.display.flip()
     clock.tick(60)
