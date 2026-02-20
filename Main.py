@@ -1,8 +1,7 @@
 import random
-from turtle import color
 import pygame
 import math
-
+import json
 pygame.init()
 time_scale = 1
 WIDTH, HEIGHT = 800, 600
@@ -17,11 +16,15 @@ clock = pygame.time.Clock()
 Gravity = 0.5
 Bounce = 0.7
 ramp_angle=0
+portal_colors=[(100,0,200),(0,100,200),(200,100,0),(200,0,100),(255,50,120)]
+portal_index=0
+portal_placed=0
 balls = []
 walls = []
 ramps = []
 ball_spawners=[]
 portals=[]
+waiting_portals={}
 Gui = True
 slider=False
 spawn_buttons=False
@@ -223,22 +226,24 @@ class BallSpawner:
     def draw(self, screen):
         pygame.draw.circle(screen, (0, 255, 0), (int(self.x), int(self.y)), 15)
 class Portal:
-    def  __init__(self,x,y,raduis=18,color=(100,0,200)):
+    def  __init__(self,x,y,raduis,color=(100,0,200)):
         self.x=x
         self.y=y
         self.radius=raduis
         self.color=color
         self.link=None
+        
     def draw(self,screen):
-        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
+        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius, 3)
     def check_portal(self,ball):
         dx=ball.x - self.x
         dy=ball.y - self.y
         dist_squared=dx*dx + dy*dy
-        if dist_squared < (self.radius * self.radius) :
-            if hasattr(ball, 'portal_cooldown') and ball.portal_cooldown > 0:
+        if dist_squared < self.radius * self.radius :
+            if getattr(ball, 'portal_cooldown',0) > 0:
                 return
             if self.link:
+                
                 mag=math.hypot(ball.vel_x, ball.vel_y)
                 if mag == 0:
                     nx,ny=0,-1
@@ -284,6 +289,73 @@ def check_collisions(balls):
                 b1.vel_y -= impulse_y / b1.mass
                 b2.vel_x += impulse_x / b2.mass
                 b2.vel_y += impulse_y / b2.mass
+def save_layout(filename="layout.json"):
+    data={
+        "balls":[
+            {"x":b.x,"y":b.y,"r":b.radius,"vx":b.vel_x,"vy":b.vel_y,"color":b.color}
+            for b in balls
+        ],
+        "walls":[
+            {"x":w.x,"y":w.y,"w":w.width,"h":w.height,"angle":w.angle}
+            for w in walls
+        ],
+        "ramps":[
+            {"x":r.x,"y":r.y,"angle":r.angle}
+            for r in ramps
+        ],
+        "ball_spawner":[
+            {"x":bs.x,"y":bs.y}
+            for bs in ball_spawners
+        ],
+        "portals":[
+            {"x":p.x,"y":p.y,"r":p.radius,"color":p.color}
+            for p in portals
+        ]        
+    }
+    with open(filename,"w") as f:
+        json.dump(data,f,indent=4)
+def load_layout(filename="layout.json"):
+    global balls,walls,ramps,portals,waiting_portal
+
+    try:
+        with open(filename,"r") as f:
+            data=json.load(f)
+    except:
+        print("No save file found")
+        return
+
+    balls.clear()
+    walls.clear()
+    ramps.clear()
+    portals.clear()
+    waiting_portals.clear()
+
+    for b in data["balls"]:
+        ball=Ball(b["x"],b["y"],b["r"],tuple(b["color"]))
+        ball.vel_x=b["vx"]
+        ball.vel_y=b["vy"]
+        balls.append(ball)
+
+    for w in data["walls"]:
+        walls.append(Wall(w["x"],w["y"],w["w"],w["h"],w["angle"]))
+
+    for r in data["ramps"]:
+        ramps.append(Ramp(r["x"],r["y"],r["angle"]))
+    for bs in data["ball_spawner"]:
+        ball_spawners.append(BallSpawner(bs["x"],bs["y"]))
+    color_groups={}
+    for p in data["portals"]:
+        portal=Portal(p["x"],p["y"],p["r"],tuple(p["color"]))
+        portals.append(portal)
+
+        c=tuple(p["color"])
+        if c in color_groups:
+            other=color_groups[c]
+            portal.link=other
+            other.link=portal
+        else:
+            color_groups[c]=portal
+
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -317,10 +389,20 @@ while running:
             elif build_type=="ball_spawner":
                 ball_spawners.append(BallSpawner(x,y,rate=1))
             elif build_type=="portal":
-                portals.append(Portal(x,y))
-                if len(portals) % 2 == 0:
-                    portals[-1].link = portals[-2]
-                    portals[-2].link = portals[-1]
+                color=portal_colors[portal_index]
+                
+                p=Portal(x,y,25,color)
+                portals.append(p)
+                if color in waiting_portals:
+                    other_portal=waiting_portals[color]
+                    p.link=other_portal
+                    other_portal.link=p
+                    del waiting_portals[color]
+                else:
+                    waiting_portals[color]=p
+                portal_placed+=1
+                if portal_placed %2==0:
+                    portal_index=(portal_index + 1) % len(portal_colors)
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             mx,my=pygame.mouse.get_pos()
@@ -360,6 +442,12 @@ while running:
                 if math.hypot(spawner.x - mx, spawner.y - my) < 15:
                     ball_spawners.remove(spawner)
                     break
+            for portal in portals:
+                if math.hypot(portal.x - mx, portal.y - my) < portal.radius:
+                    if portal.link:
+                        portal.link.link=None
+                    portals.remove(portal)
+                    break
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and spawn_buttons:
             
             x, y = pygame.mouse.get_pos()
@@ -379,6 +467,10 @@ while running:
                 build_type = "ball_spawner"
             if event.key == pygame.K_4:
                 build_type = "portal"
+            if event.key == pygame.K_s:
+                save_layout()
+            if event.key == pygame.K_l:
+                load_layout()
 
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
@@ -462,8 +554,10 @@ while running:
             mx,my=pygame.mouse.get_pos()
             pygame.draw.circle(screen, (0, 255, 0), (int(mx), int(my)), 15)
         elif build_type=="portal":
+            screen.blit(font.render(f"Portal pair #{portal_index + 1}", True, (0, 0, 0)), (WIDTH - 165, 50))
             mx,my=pygame.mouse.get_pos()
-            pygame.draw.circle(screen, (100, 0, 200), (int(mx), int(my)), 18,2)
+            preview_color=portal_colors[portal_index]
+            pygame.draw.circle(screen, preview_color, (int(mx), int(my)), 25,2)
 
     pygame.display.flip()
     clock.tick(60)
