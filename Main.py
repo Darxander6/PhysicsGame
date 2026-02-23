@@ -23,6 +23,8 @@ balls = []
 walls = []
 ramps = []
 ball_spawners=[]
+drag=0.001
+terminal_velocity=25
 portals=[]
 waiting_portals={}
 Gui = True
@@ -31,10 +33,13 @@ spawn_buttons=False
 font = pygame.font.SysFont(None, 36)
 gui_text = font.render("start game", True, (255, 255, 255))
 ball_button_text = font.render("spawn balls", True, (255, 255, 255))    
+setting_text= font.render("settings",True,(255,255,255))
 pygame.display.set_caption("Ball Simulation")
 clear_balls_button = pygame.Rect(0,100, 150, 100)
 ball_button = pygame.Rect(0, 0, 150, 100)
 GuiButton = pygame.Rect(270, 200, 250, 150)
+Setting_Button=pygame.Rect(590,200,200,150)
+inSettings=False
 class Slider:
     def __init__(self, x, y, width, min_val, max_val, start_val, label):
         self.rect = pygame.Rect(x, y, width, 20)
@@ -61,8 +66,10 @@ class Slider:
         pygame.draw.circle(screen,(255,100,100),(int(knob_x), self.rect.centery), 10)
         label_text=font.render(f"{self.label}: {self.value:.2f}", True, (0, 0, 0))
         screen.blit(label_text, (self.rect.x, self.rect.y - 25))
-gravity_slider=Slider(590, 200, 200, 0, 2, 0.5, "Gravity")
-bounce_slider=Slider(590, 300, 200, 0, 1, 0.7, "Bounce")   
+gravity_slider=Slider(300, 200, 200, 0, 2, 0.5, "Gravity")
+bounce_slider=Slider(300, 300, 200, 0, 1, 0.7, "Bounce") 
+drag_slider=Slider(300,400,200,0,1,0.001,"Drag")  
+terminal_velocity_slider=Slider(300,500,200,0,100,25,"terminal velocity")
 class Wall:
     def __init__(self, x, y,width=20,height=120,angle=0):
         self.x = x
@@ -105,16 +112,35 @@ class Ball:
         self.vel_y=0
         self.vel_x=0
         self.mass=self.radius
+        self.spin=0
+        self.rotation=0
     def update(self):
         if hasattr(self, 'portal_cooldown'):
             if self.portal_cooldown > 0:
                 self.portal_cooldown -= 1
         self.vel_y += Gravity *time_scale
+        drag=0.001
+        speed=math.hypot(self.vel_x,self.vel_y)
+        self.vel_x-=self.vel_x*drag*speed
+        self.vel_y-=self.vel_y*drag*speed
+        if self.vel_y>terminal_velocity:
+            self.vel_y=terminal_velocity
+
+        
+        
+        
         self.y += self.vel_y*time_scale
         self.x += self.vel_x*time_scale
+        self.rotation+=self.spin *time_scale
         if self.y + self.radius > HEIGHT:
             self.y = HEIGHT - self.radius
             self.vel_y *= -Bounce
+            self.vel_x*=0.9
+            if abs(self.vel_y)<.15:
+                self.vel_y=0
+        if self.y - self.radius < 0:
+            self.y=self.radius
+            self.vel_y*=-Bounce
         if self.x - self.radius < 0:
             self.x = self.radius
             self.vel_x *= -Bounce
@@ -123,6 +149,7 @@ class Ball:
             self.vel_x *= -Bounce
         self.vel_x *= 0.999
         self.vel_y *= 0.999
+        self.spin*=0.99
         for wall in walls:
             pts = wall.points()
             edges = [
@@ -165,10 +192,8 @@ class Ball:
                     if vn < 0:
                         self.vel_x -= 2*vn*nx
                         self.vel_y -= 2*vn*ny
-                    self.vel_x *= 0.9
-                    self.vel_y *= Bounce
-
-            
+                    self.vel_y *= 0.85
+                    self.vel_x *=0.85     
         for ramp in ramps:
             points = ramp.points()
             for i in range(len(points)):
@@ -204,12 +229,18 @@ class Ball:
                     gravity_along=Gravity*ty
                     self.vel_x += gravity_along*tx*time_scale
                     self.vel_y += gravity_along*ty*time_scale
+                    self.spin+=self.vel_x *0.02
+                    self.spin*=0.99
                     self.vel_x *= 0.99
-                    self.vel_y *= 0.99
+                    self.vel_y *= 0.9
         for p in portals:
             p.check_portal(self)
     def draw(self, screen):
         pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
+        angle=self.rotation
+        px=self.x+math.cos(angle)*self.radius
+        py =self.y+math.sin(angle)*self.radius
+        pygame.draw.line(screen,(0,0,0),(self.x,self.y),(px,py,),2)
 class BallSpawner:
     def __init__(self, x, y, rate=1):
         self.x = x
@@ -362,13 +393,16 @@ while running:
             running = False
         gravity_slider.handle_event(event)
         bounce_slider.handle_event(event)
+        drag_slider.handle_event(event)
+        terminal_velocity_slider.handle_event(event)
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1 :
                 if Gui:
                     if GuiButton.collidepoint(event.pos):
                         Gui = not Gui
                 else:
-
+                    if Setting_Button.collidepoint(event.pos):
+                        inSettings = not inSettings
 
                     if ball_button.collidepoint(event.pos):
                         
@@ -405,6 +439,7 @@ while running:
                     portal_index=(portal_index + 1) % len(portal_colors)
 
         if event.type == pygame.MOUSEBUTTONDOWN:
+            
             mx,my=pygame.mouse.get_pos()
             for ball in balls:
                 dx=ball.x - mx
@@ -419,6 +454,7 @@ while running:
                 vy=my - prev_mouse_pos[1]
                 dragging_ball.vel_x=vx*0.5
                 dragging_ball.vel_y=vy*0.5
+                dragging_ball.spin=vx*0.05
                 dragging_ball=None
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             mx,my=pygame.mouse.get_pos()
@@ -506,10 +542,21 @@ while running:
         spawner.draw(screen)
     for portal in portals:
         portal.draw(screen)
-
     if Gui==False:
+        if inSettings:
+            pygame.draw.rect(screen,('green'),Setting_Button)
+        else:
+            pygame.draw.rect(screen,('red'),Setting_Button)
+
+        screen.blit(setting_text,(630,260))
+
+    if Gui==False and inSettings:
         Bounce=bounce_slider.value
-        Gravity=gravity_slider.value        
+        Gravity=gravity_slider.value  
+        drag=drag_slider.value
+        terminal_velocity=terminal_velocity_slider.value
+        drag_slider.draw(screen,font)
+        terminal_velocity_slider.draw(screen,font)      
         gravity_slider.draw(screen,font)
         bounce_slider.draw(screen,font)
         
