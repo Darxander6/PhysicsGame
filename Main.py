@@ -29,6 +29,7 @@ portals=[]
 waiting_portals={}
 Gui = True
 slider=False
+no_file=False
 spawn_buttons=False
 font = pygame.font.SysFont(None, 36)
 gui_text = font.render("start game", True, (255, 255, 255))
@@ -346,12 +347,13 @@ def save_layout(filename="layout.json"):
     with open(filename,"w") as f:
         json.dump(data,f,indent=4)
 def load_layout(filename="layout.json"):
-    global balls,walls,ramps,portals,waiting_portal,Gravity,Bounce,drag,terminal_velocity
+    global balls,walls,ramps,portals,waiting_portal,Gravity,Bounce,drag,terminal_velocity,no_file
 
     try:
         with open(filename,"r") as f:
             data=json.load(f)
     except:
+        no_file=True
         print("No save file found")
         return
 
@@ -561,6 +563,8 @@ while running:
             pygame.draw.rect(screen,('red'),Setting_Button)
 
         screen.blit(setting_text,(630,260))
+    if no_file:
+        screen.blit(font.render("No save file found make sure you have a json file and save again",True,'black'),(250,150))
 
     if Gui==False and inSettings:
         Bounce=bounce_slider.value

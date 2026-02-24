@@ -6,10 +6,10 @@
     "portals": [],
     "values": [
         {
-            "gravity": 0.36,
-            "bounce": 0.275,
-            "terminal velocity": 18.0,
-            "drag": 0.655
+            "gravity": 0.5,
+            "bounce": 0.7,
+            "terminal velocity": 25,
+            "drag": 0.01
         }
     ]
 }
