@@ -23,7 +23,7 @@ balls = []
 walls = []
 ramps = []
 ball_spawners=[]
-drag=0.001
+drag=0.01
 terminal_velocity=25
 portals=[]
 waiting_portals={}
@@ -66,10 +66,7 @@ class Slider:
         pygame.draw.circle(screen,(255,100,100),(int(knob_x), self.rect.centery), 10)
         label_text=font.render(f"{self.label}: {self.value:.2f}", True, (0, 0, 0))
         screen.blit(label_text, (self.rect.x, self.rect.y - 25))
-gravity_slider=Slider(300, 200, 200, 0, 2, 0.5, "Gravity")
-bounce_slider=Slider(300, 300, 200, 0, 1, 0.7, "Bounce") 
-drag_slider=Slider(300,400,200,0,1,0.001,"Drag")  
-terminal_velocity_slider=Slider(300,500,200,0,100,25,"terminal velocity")
+
 class Wall:
     def __init__(self, x, y,width=20,height=120,angle=0):
         self.x = x
@@ -119,10 +116,10 @@ class Ball:
             if self.portal_cooldown > 0:
                 self.portal_cooldown -= 1
         self.vel_y += Gravity *time_scale
-        drag=0.001
+        ball_drag=drag/100
         speed=math.hypot(self.vel_x,self.vel_y)
-        self.vel_x-=self.vel_x*drag*speed
-        self.vel_y-=self.vel_y*drag*speed
+        self.vel_x-=self.vel_x*(ball_drag)*speed
+        self.vel_y-=self.vel_y*(ball_drag)*speed
         if self.vel_y>terminal_velocity:
             self.vel_y=terminal_velocity
 
@@ -341,12 +338,15 @@ def save_layout(filename="layout.json"):
         "portals":[
             {"x":p.x,"y":p.y,"r":p.radius,"color":p.color}
             for p in portals
-        ]        
+        ],       
+        "values":[
+            {"gravity":Gravity,"bounce":Bounce,"terminal velocity":terminal_velocity,"drag":drag}
+        ]
     }
     with open(filename,"w") as f:
         json.dump(data,f,indent=4)
 def load_layout(filename="layout.json"):
-    global balls,walls,ramps,portals,waiting_portal
+    global balls,walls,ramps,portals,waiting_portal,Gravity,Bounce,drag,terminal_velocity
 
     try:
         with open(filename,"r") as f:
@@ -386,7 +386,15 @@ def load_layout(filename="layout.json"):
             other.link=portal
         else:
             color_groups[c]=portal
-
+    for value in data['values']:
+        Gravity=value["gravity"]
+        Bounce=value["bounce"]
+        terminal_velocity=value["terminal velocity"]
+        drag=value['drag']
+gravity_slider=Slider(300, 200, 200, 0, 2, Gravity, "Gravity")
+bounce_slider=Slider(300, 300, 200, 0, 1, Bounce, "Bounce") 
+drag_slider=Slider(300,400,200,0,1,drag,"Drag")  
+terminal_velocity_slider=Slider(300,500,200,0,100,terminal_velocity,"terminal velocity")
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -507,6 +515,10 @@ while running:
                 save_layout()
             if event.key == pygame.K_l:
                 load_layout()
+                gravity_slider=Slider(300, 200, 200, 0, 2, Gravity, "Gravity")
+                bounce_slider=Slider(300, 300, 200, 0, 1, Bounce, "Bounce") 
+                drag_slider=Slider(300,400,200,0,1,drag,"Drag")  
+                terminal_velocity_slider=Slider(300,500,200,0,100,terminal_velocity,"terminal velocity")
 
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
@@ -574,9 +586,12 @@ while running:
         screen.blit(font.render("clear balls", True, (255, 255, 255)), (clear_balls_button.x + 20, clear_balls_button.y + 50))
         pygame.draw.rect(screen, 'red', ball_button)
         screen.blit(ball_button_text, (ball_button.x + 20, ball_button.y + 50))
-    value_text= font.render(f"Gravity: {Gravity:.2f} Bounce: {Bounce:.2f}", True, 'black')
+    value_text= font.render(f"Gravity: {Gravity:.2f}, Bounce: {Bounce:.2f},",True,'black')
+    value_text_2=font.render(f"Drag : {drag:.2f} ,Terminal Velocity : {terminal_velocity:.2f}",True,'black')
 
     screen.blit(value_text, (WIDTH - value_text.get_width() - 10, 10))
+    screen.blit(value_text_2, (WIDTH - value_text_2.get_width() - 10, 40))
+    
     mx,my=pygame.mouse.get_pos()
     if build_mode:
         screen.blit(font.render(f"Building: {build_type}", True, 'black'), (500, 500))
